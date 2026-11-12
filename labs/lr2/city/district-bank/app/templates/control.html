@@ -1,0 +1,20 @@
+{% extends 'city_base.html' %}
+{% block content %}
+<h1>Крупные переводы на подтверждение</h1>
+<table>
+  <tr><th>№</th><th>Откуда</th><th>Куда</th><th>Сумма</th><th></th></tr>
+  {% for t in pending %}
+    <tr><td>{{ t['id'] }}</td><td>{{ t['from_number'] }}</td><td>{{ t['to_number'] }}</td><td>{{ t['amount'] }}</td>
+      <td>
+        {% for action, label in [('approve', 'Подтвердить'), ('reject', 'Отклонить')] %}
+        <form method="post" action="{{ url_for('decide', transfer_id=t['id'], action=action) }}" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button {% if action == 'reject' %}class="danger"{% endif %}>{{ label }}</button>
+        </form>
+        {% endfor %}
+      </td></tr>
+  {% else %}
+    <tr><td colspan="5">Нет переводов на подтверждение.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}
