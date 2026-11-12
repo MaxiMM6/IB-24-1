@@ -1,0 +1,10 @@
+{% extends 'city_base.html' %}
+{% block content %}
+<h1>Касса: пополнение счёта</h1>
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label>Номер счёта <input name="number" required maxlength="20"></label>
+  <label>Сумма, ₽ <input name="amount" required inputmode="numeric" maxlength="7"></label>
+  <button>Пополнить</button>
+</form>
+{% endblock %}

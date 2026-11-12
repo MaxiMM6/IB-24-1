@@ -1,0 +1,62 @@
+# Шлюз «Цифрового города». Все сайты — на порту 8080, без HTTPS (учебный город на одном компьютере).
+{
+	auto_https off
+	admin off
+	http_port 8080
+}
+
+(common) {
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy same-origin
+		-Server
+	}
+	# Если контейнер района не запущен, Caddy не найдёт его — показываем понятную страницу.
+	handle_errors {
+		@down expression `{err.status_code} in [502, 503, 504]`
+		handle @down {
+			rewrite * /district-down.html
+			file_server {
+				root /srv
+			}
+		}
+	}
+}
+
+(district) {
+	import common
+	reverse_proxy {args[0]}:8000 {
+		header_up X-Request-ID {http.request.uuid}
+	}
+}
+
+http://city.localhost:8080 {
+	import common
+	root * /srv
+	file_server
+}
+
+http://auth.city.localhost:8080 {
+	import common
+	reverse_proxy passport:8080
+}
+
+http://cityhall.city.localhost:8080 {
+	import district cityhall
+}
+
+http://bank.city.localhost:8080 {
+	import district bank
+}
+
+http://hospital.city.localhost:8080 {
+	import district hospital
+}
+
+http://grid.city.localhost:8080 {
+	import district grid
+}
+
+http://soc.city.localhost:8080 {
+	import district soc
+}
