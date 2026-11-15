@@ -1,0 +1,14 @@
+{% extends 'city_base.html' %}
+{% block content %}
+<h1>Перевод</h1>
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label>Со счёта
+    <select name="from_id">{% for a in accounts %}<option value="{{ a['id'] }}">{{ a['number'] }} — {{ a['balance'] }} ₽</option>{% endfor %}</select>
+  </label>
+  <label>Номер счёта получателя <input name="to_number" required maxlength="20"></label>
+  <label>Сумма, ₽ (целое число) <input name="amount" required inputmode="numeric" maxlength="7"></label>
+  <button>Перевести</button>
+</form>
+<p class="muted">Переводы больше 50 000 ₽ выполняются после подтверждения контролёром банка.</p>
+{% endblock %}

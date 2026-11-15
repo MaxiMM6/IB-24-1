@@ -1,0 +1,17 @@
+{% extends 'city_base.html' %}
+{% block content %}
+<h1>Все счета (касса)</h1>
+<table>
+  <tr><th>ID</th><th>Номер счёта</th><th>Владелец</th><th>Баланс</th></tr>
+  {% for a in accounts %}
+  <tr>
+    <td>{{ a['id'] }}</td>
+    <td>{{ a['number'] }}</td>
+    <td>{{ a['owner_name'] }}</td>
+    <td>{{ a['balance'] }} ₽</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="4">Счетов нет.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}
