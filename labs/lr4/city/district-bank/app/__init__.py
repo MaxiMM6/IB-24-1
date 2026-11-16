@@ -9,8 +9,8 @@ from flask import abort, flash, redirect, render_template, request, url_for
 
 from citykit import create_city_app, current_user, get_db, log, login_required, publish_event, role_required, has_role
 
-DEMO_BALANCE = 10_000  # стартовый баланс нового счёта, рублей (учебный город)
-BIG_TRANSFER = 50_000  # переводы больше этой суммы подтверждает контролёр
+DEMO_BALANCE = 10_000
+BIG_TRANSFER = 50_000
 MAX_DEPOSIT = 1_000_000
 
 SCHEMA = """
@@ -19,12 +19,12 @@ CREATE TABLE IF NOT EXISTS accounts (
     number     TEXT UNIQUE NOT NULL,
     owner_sub  TEXT NOT NULL,
     owner_name TEXT NOT NULL,
-    balance    INTEGER NOT NULL DEFAULT 0 CHECK (balance >= 0),   -- целые рубли (Р6)
+    balance    INTEGER NOT NULL DEFAULT 0 CHECK (balance >= 0),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS transfers (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    from_id       INTEGER REFERENCES accounts (id),               -- NULL: пополнение в кассе
+    from_id       INTEGER REFERENCES accounts (id),
     to_id         INTEGER NOT NULL REFERENCES accounts (id),
     amount        INTEGER NOT NULL CHECK (amount > 0),
     status        TEXT NOT NULL CHECK (status IN ('done', 'pending', 'rejected')),
@@ -59,14 +59,12 @@ def create_app(test_config: dict | None = None):
         return acc
 
     def parse_amount(raw: str, limit: int) -> int | None:
-        # ИБ: только целое положительное число и разумный предел — без «-500» и «1e9».
         if not raw.isdigit():
             return None
         value = int(raw)
         return value if 0 < value <= limit else None
 
     def move_money(db, from_id: int | None, to_id: int, amount: int) -> bool:
-        """Списать и зачислить в одной транзакции. Списание — только если хватает денег."""
         if from_id is not None:
             cur = db.execute(
                 "UPDATE accounts SET balance = balance - ? WHERE id = ? AND balance >= ?", (amount, from_id, amount)
@@ -93,7 +91,6 @@ def create_app(test_config: dict | None = None):
         if db.execute("SELECT COUNT(*) FROM accounts WHERE owner_sub = ?", (current_user()["sub"],)).fetchone()[0] >= 3:
             flash("Не больше трёх счетов на жителя.")
             return redirect(url_for("index"))
-        # ИБ: номер счёта случайный — по нему нельзя перебрать соседние счета.
         number = "40817" + "".join(secrets.choice("0123456789") for _ in range(10))
         cur = db.execute(
             "INSERT INTO accounts (number, owner_sub, owner_name, balance) VALUES (?, ?, ?, ?)",
@@ -101,6 +98,13 @@ def create_app(test_config: dict | None = None):
         )
         db.commit()
         log("INFO", "data.change", "success", "открыт счёт", details={"account_id": cur.lastrowid})
+        
+        publish_event(
+            "city.bank.account.opened.v1",
+            subject=f"account/{cur.lastrowid}",
+            data={"owner": current_user()["sub"], "balance": DEMO_BALANCE}
+        )
+        
         return redirect(url_for("index"))
 
     @app.route("/accounts/<int:account_id>")
@@ -138,7 +142,6 @@ def create_app(test_config: dict | None = None):
             elif amount > src["balance"]:
                 flash("Недостаточно денег на счёте.")
             elif amount > BIG_TRANSFER:
-                # ИБ: разделение полномочий — крупный перевод подтверждает другой человек.
                 db.execute(
                     "INSERT INTO transfers (from_id, to_id, amount, status, initiator_sub) VALUES (?, ?, ?, 'pending', ?)",
                     (src["id"], dst["id"], amount, current_user()["sub"]),
@@ -231,7 +234,6 @@ def create_app(test_config: dict | None = None):
         if t is None:
             abort(404)
         if t["initiator_sub"] == current_user()["sub"]:
-            # ИБ: свой собственный перевод подтверждать нельзя.
             log(
                 "WARN",
                 "access.denied",
@@ -265,7 +267,6 @@ def create_app(test_config: dict | None = None):
     @app.route("/history")
     @login_required
     def history():
-        """ИБ: история операций (все переводы)."""
         db = get_db()
         transfers = db.execute(
             "SELECT t.*, fa.number AS from_number, ta.number AS to_number FROM transfers t "
@@ -277,8 +278,17 @@ def create_app(test_config: dict | None = None):
     @app.route("/cashier/accounts")
     @role_required("кассир")
     def cashier_accounts():
-        """ИБ: кассир видит все счета (для пополнения), но не может их менять кроме как через кассу."""
         accounts = get_db().execute("SELECT * FROM accounts ORDER BY id").fetchall()
         return render_template("cashier_accounts.html", accounts=accounts)
+
+    def on_foreign_event(event):
+        try:
+            log("INFO", "foreign.event.handled", "success", event.get("type", "unknown"),
+                details={"from": event.get("district", "unknown")})
+        except Exception as e:
+            log("ERROR", "foreign.event.failed", "error", str(e),
+                details={"event_id": event.get("id", "?")})
+
+    app.extensions["city"]["bus"].subscribe("city.cityhall.request.created.v1", on_foreign_event)
 
     return app
